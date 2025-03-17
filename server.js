@@ -14,20 +14,26 @@ const contractArtifact = JSON.parse(
 const contractABI = contractArtifact.abi;
 
 // Initialize contract
-const contract = new web3.eth.Contract(
-  contractABI,
-  process.env.CONTRACT_ADDRESS
-);
+const contract = new web3.eth.Contract(contractABI, process.env.CONTRACT_ADDRESS);
 
-// Configure Ethereum account
-const privateKey = process.env.ETH_PRIVATE_KEY;
-const account = web3.eth.accounts.privateKeyToAccount(privateKey);
-web3.eth.accounts.wallet.add(account);
+// Configure Ethereum accounts for different roles
+const accounts = {
+  farmer: web3.eth.accounts.privateKeyToAccount(process.env.FARMER_PRIVATE_KEY),
+  processor: web3.eth.accounts.privateKeyToAccount(process.env.PROCESSOR_PRIVATE_KEY),
+  distributor: web3.eth.accounts.privateKeyToAccount(process.env.DISTRIBUTOR_PRIVATE_KEY),
+  retailer: web3.eth.accounts.privateKeyToAccount(process.env.RETAILER_PRIVATE_KEY)
+};
+
+// Add accounts to wallet
+Object.values(accounts).forEach(account => web3.eth.accounts.wallet.add(account));
 
 app.use(bodyParser.json()); // Parse JSON bodies
 
-async function sendTransaction(methodName, productId) {
+async function sendTransaction(methodName, productId, role) {
   try {
+    const account = accounts[role];
+    if (!account) throw new Error(`Invalid role: ${role}`);
+
     const method = contract.methods[methodName](productId);
     const gas = await method.estimateGas({ from: account.address });
     
@@ -38,7 +44,7 @@ async function sendTransaction(methodName, productId) {
       from: account.address
     };
 
-    const signedTx = await web3.eth.accounts.signTransaction(txData, privateKey);
+    const signedTx = await web3.eth.accounts.signTransaction(txData, account.privateKey);
     const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
     
     return { 
@@ -57,7 +63,6 @@ async function sendTransaction(methodName, productId) {
 
 app.post("/sms", async (req, res) => {
   try {
-    // Extract and process the message content
     const rawMessage = req.body.message || '';
     
     // Extracting only the actual message content after "From:{sender}\n"
@@ -65,7 +70,7 @@ app.post("/sms", async (req, res) => {
     const content = matchMessage ? matchMessage[1].trim() : '';
 
     const formattedMessage = content.toUpperCase();
-    const match = formattedMessage.match(/^AGC\s+(PNT|HVT)\s+(\d+)$/);
+    const match = formattedMessage.match(/^AGC\s+(PNT|HVT|PRO|DIS|RTL|SOL)\s+(\d+)$/);
 
     if (!match) {
       console.log('Invalid message format:', formattedMessage);
@@ -81,17 +86,21 @@ app.post("/sms", async (req, res) => {
     }
 
     const methodMap = {
-      PNT: 'plantProduct',
-      HVT: 'harvestProduct'
+      PNT: { method: 'plantProduct', role: 'farmer' },
+      HVT: { method: 'harvestProduct', role: 'farmer' },
+      PRO: { method: 'processProduct', role: 'processor' },
+      DIS: { method: 'distributeProduct', role: 'distributor' },
+      RTL: { method: 'receiveProduct', role: 'retailer' },
+      SOL: { method: 'sellProduct', role: 'retailer' }
     };
 
-    const method = methodMap[action];
-    if (!method) {
+    const methodData = methodMap[action];
+    if (!methodData) {
       console.log('Invalid action:', action);
       return res.sendStatus(200);
     }
 
-    const result = await sendTransaction(method, productId);
+    const result = await sendTransaction(methodData.method, productId, methodData.role);
     
     if (result.success) {
       console.log(`Transaction successful - Product: ${productId}, TX: ${result.hash}`);
