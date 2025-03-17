@@ -59,8 +59,10 @@ app.post("/sms", async (req, res) => {
   try {
     // Extract and process the message content
     const rawMessage = req.body.message || '';
-    const messageParts = rawMessage.split('\n').map(part => part.trim());
-    const content = messageParts.length > 1 ? messageParts[1] : '';
+    
+    // Extracting only the actual message content after "From:{sender}\n"
+    const matchMessage = rawMessage.match(/From:.*\n(.+)/s);
+    const content = matchMessage ? matchMessage[1].trim() : '';
 
     const formattedMessage = content.toUpperCase();
     const match = formattedMessage.match(/^AGC\s+(PNT|HVT)\s+(\d+)$/);
@@ -104,7 +106,7 @@ app.post("/sms", async (req, res) => {
   return res.sendStatus(200); // Acknowledge receipt
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`SMS processing server running on port ${PORT}`);
   console.log(`Contract address: ${process.env.CONTRACT_ADDRESS}`);
