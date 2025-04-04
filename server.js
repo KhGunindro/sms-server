@@ -115,7 +115,7 @@ app.post("/sms", async (req, res) => {
   return res.sendStatus(200); // Acknowledge receipt
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`SMS processing server running on port ${PORT}`);
   console.log(`Contract address: ${process.env.CONTRACT_ADDRESS}`);
